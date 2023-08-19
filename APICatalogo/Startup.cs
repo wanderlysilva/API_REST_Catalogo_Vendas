@@ -4,12 +4,16 @@ using ApiCatalogo.Filters;
 using ApiCatalogo.Repository;
 using APICatalogo.Context;
 using AutoMapper;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 namespace APICatalogo
 {
@@ -26,6 +30,7 @@ namespace APICatalogo
         // Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddCors();
 
             var mappingConfig = new MapperConfiguration(mc =>
             {
@@ -40,6 +45,30 @@ namespace APICatalogo
 
             services.AddDbContext<AppDbContext>(options =>
             options.UseMySql(Configuration.GetConnectionString("DefaultConnection")));
+
+            services.AddIdentity<IdentityUser, IdentityRole>()
+                  .AddEntityFrameworkStores<AppDbContext>()
+                  .AddDefaultTokenProviders();
+
+            //JWT
+            //adiciona o manipulador de autenticacao e define o 
+            //esquema de autenticacao usado : Bearer
+            //valida o emissor, a audiencia e a chave
+            //usando a chave secreta valida a assinatura
+            services.AddAuthentication(
+                JwtBearerDefaults.AuthenticationScheme).
+                AddJwtBearer(options =>
+                 options.TokenValidationParameters = new TokenValidationParameters
+                 {
+                     ValidateIssuer = true,
+                     ValidateAudience = true,
+                     ValidateLifetime = true,
+                     ValidAudience = Configuration["TokenConfiguration:Audience"],
+                     ValidIssuer = Configuration["TokenConfiguration:Issuer"],
+                     ValidateIssuerSigningKey = true,
+                     IssuerSigningKey = new SymmetricSecurityKey(
+                         Encoding.UTF8.GetBytes(Configuration["Jwt:key"]))
+                 });
 
             services.AddControllers()
                     .AddNewtonsoftJson(options =>
@@ -74,8 +103,13 @@ namespace APICatalogo
             //adiciona o middleware de roteamento 
             app.UseRouting();
 
+            //adiciona o middleware de autenticacao
+            app.UseAuthentication();
+
             //adiciona o middleware que habilita a autorizacao
             app.UseAuthorization();
+
+            app.UseCors(opt => opt.AllowAnyOrigin());
 
             //Adiciona o middleware que executa o endpoint 
             //do request atual
